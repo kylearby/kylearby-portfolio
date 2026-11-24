@@ -92,7 +92,26 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Everything, including /_next assets and /public files. A gate over the
-  // HTML alone would still leave images and chunks fetchable by direct URL.
-  matcher: "/:path*",
+  /**
+   * Pages, not assets.
+   *
+   * This matcher started as "/:path*" — gate literally everything — on the
+   * reasoning that gating only HTML leaves images fetchable by direct URL.
+   * That broke every image on the site, and the failure is worth recording
+   * because it is not obvious: Next's image optimizer serves /_next/image by
+   * fetching the source back off its own origin over HTTP. That internal
+   * request carries no Authorization header, so it got the 401 HTML page
+   * instead of a PNG and answered the browser with "400 — The requested
+   * resource isn't a valid image." Authenticating in the browser did not
+   * help, because the failing request was never the browser's.
+   *
+   * So /_next and ordinary static files are let through, and the gate covers
+   * the pages. Someone who knows an exact asset URL can still fetch it; that
+   * is the deliberate trade. Nothing links to those URLs, the pages that
+   * would reference them are gated, and the alternative is a site with no
+   * images for the people who do have the password.
+   */
+  matcher: [
+    "/((?!_next/|favicon\.ico|.*\.(?:png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|otf)$).*)",
+  ],
 };
