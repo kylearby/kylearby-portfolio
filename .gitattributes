@@ -1,0 +1,14 @@
+# Store text as LF in the repo regardless of the checkout platform. Without
+# this, committing from Windows records CRLF and every file looks modified to
+# the Linux builder, producing noisy diffs for whitespace nobody changed.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.woff  binary
+*.woff2 binary
