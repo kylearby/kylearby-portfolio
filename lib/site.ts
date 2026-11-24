@@ -49,9 +49,9 @@ export const site = {
     alt: "Kyle Arby",
   },
   email: "kylearby@gmail.com",
-  location: "Orange County, CA",
+  location: "Los Angeles, CA",
   /** City only, for the hero masthead. */
-  locationShort: "Orange County, CA",
+  locationShort: "Los Angeles, CA",
   timezone: "America/Los_Angeles",
   timezoneLabel: "PT",
   available: true,
