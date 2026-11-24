@@ -59,10 +59,17 @@ export const site = {
   url: "https://kylearby.com",
   description:
     "Kyle Arby is a creative director and graphic designer building brand systems, campaigns and product identities for Nike, Dime, Y-3 and Daniel Arsham.",
+  /**
+   * `label` is the only field the footer renders, so it has to identify the
+   * destination on its own — and both render sites key off it, so no two may
+   * repeat. That is why the second Instagram carries its handle in the label
+   * rather than reading "Instagram" twice.
+   */
   socials: [
-    { label: "Instagram", href: "https://instagram.com/", handle: "@kylearby" },
-    { label: "Behance", href: "https://behance.net/", handle: "kylearby" },
-    { label: "LinkedIn", href: "https://linkedin.com/in/", handle: "kylearby" },
+    { label: "Instagram", href: "https://instagram.com/kylearby", handle: "@kylearby" },
+    { label: "Instagram — saintsisms", href: "https://instagram.com/saintsisms", handle: "@saintsisms" },
+    { label: "Behance", href: "https://behance.net/kylesaints", handle: "kylesaints" },
+    { label: "LinkedIn", href: "https://linkedin.com/in/santoskyle/", handle: "santoskyle" },
     { label: "Resume", href: "https://read.cv/", handle: "kylearby" },
   ],
 } as const;
