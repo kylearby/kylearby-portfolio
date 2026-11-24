@@ -1,117 +1,73 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { GATE_COOKIE, mintToken, safeEqual } from "@/lib/gate";
 
 /**
  * SITE GATE
  * ---------------------------------------------------------------------------
- * HTTP Basic Auth in front of everything, so the site can be live on its real
- * domain while the project copy is still placeholder. Deliberately built here
- * rather than switched on at the host: this travels with the code, so it works
- * the same on Vercel, Netlify, a preview URL or a laptop, and it does not
- * depend on a paid plan tier.
+ * Holds the site closed while the project write-ups are still placeholder,
+ * behind a branded page at /enter rather than the browser's own auth dialog.
  *
- * Fails CLOSED. If the credentials are not configured the site serves a 503
- * and no content at all. The alternative — treating "unset" as "no gate" —
- * means a single missing environment variable on the host silently publishes
- * the whole site, which is the exact outcome this exists to prevent.
+ * This replaced an HTTP Basic Auth version. Basic Auth was rejected for two
+ * reasons that no amount of styling fixes: the prompt is an unbrandable
+ * operating-system dialog that renders before any of the site exists, and the
+ * browser re-asks for it each session. A cookie set from a real page solves
+ * both — it looks like the site, and it lasts 90 days.
  *
- * Basic Auth sends the password on every request, so this is only private
- * over HTTPS. That is fine on any real host; it is not a reason to trust it
- * over plain HTTP.
+ * Fails CLOSED. With no password configured the site serves 503 and nothing
+ * else. Treating "unset" as "no gate" means one missing environment variable
+ * silently publishes the whole site, which is what this exists to prevent.
  *
- * This is a "not ready for visitors" sign, not a security boundary. It keeps
- * the work-in-progress out of public view and out of search results; it is not
- * protecting secrets, and anything served here should be safe to hand to
- * whoever is given the password.
+ * This is a "not ready for visitors" sign, not a security boundary. Anything
+ * served here should be safe to hand to whoever gets the password.
  */
 
-/**
- * Compares without leaking, through timing, how much of the value matched.
- * `crypto.timingSafeEqual` is a Node API and middleware runs on the Edge
- * runtime, so the comparison is written out by hand.
- */
-function safeEqual(a: string, b: string): boolean {
-  const len = Math.max(a.length, b.length);
-  let diff = a.length ^ b.length;
-  for (let i = 0; i < len; i++) {
-    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
-  }
-  return diff === 0;
-}
+export async function middleware(request: NextRequest) {
+  const password = process.env.SITE_PASSWORD;
 
-function challenge() {
-  return new NextResponse("Authentication required.", {
-    status: 401,
-    headers: {
-      // `charset` so non-ASCII characters in a password are read correctly.
-      "WWW-Authenticate": 'Basic realm="Private preview", charset="UTF-8"',
-      // Belt and braces alongside the 401: never cache, never index.
-      "Cache-Control": "no-store",
-      "X-Robots-Tag": "noindex, nofollow",
-    },
-  });
-}
-
-export function middleware(request: NextRequest) {
-  const expectedUser = process.env.SITE_USER;
-  const expectedPassword = process.env.SITE_PASSWORD;
-
-  if (!expectedUser || !expectedPassword) {
+  if (!password) {
     return new NextResponse(
-      "Site gate is not configured. Set SITE_USER and SITE_PASSWORD.",
+      "Site gate is not configured. Set SITE_PASSWORD.",
       { status: 503, headers: { "Cache-Control": "no-store" } }
     );
   }
 
-  const header = request.headers.get("authorization");
-  if (!header?.startsWith("Basic ")) return challenge();
-
-  let decoded: string;
-  try {
-    decoded = atob(header.slice(6));
-  } catch {
-    return challenge();
+  const presented = request.cookies.get(GATE_COOKIE)?.value;
+  if (presented && safeEqual(presented, await mintToken(password))) {
+    const response = NextResponse.next();
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+    return response;
   }
 
-  // Only the first colon separates the pair — passwords may contain colons.
-  const separator = decoded.indexOf(":");
-  if (separator === -1) return challenge();
-
-  const user = decoded.slice(0, separator);
-  const password = decoded.slice(separator + 1);
-
-  // Both comparisons always run, so the response time does not reveal whether
-  // it was the username or the password that was wrong.
-  const userOk = safeEqual(user, expectedUser);
-  const passwordOk = safeEqual(password, expectedPassword);
-  if (!(userOk && passwordOk)) return challenge();
-
-  const response = NextResponse.next();
-  // Keep the whole preview out of search indexes even once past the gate.
+  // Rewrite rather than redirect: the visitor keeps the URL they asked for,
+  // so a shared deep link still lands on that page once they are through,
+  // and /enter never shows up in their history or the address bar.
+  const url = request.nextUrl.clone();
+  url.pathname = "/enter";
+  url.search = "";
+  const response = NextResponse.rewrite(url, { status: 401 });
+  response.headers.set("Cache-Control", "no-store");
   response.headers.set("X-Robots-Tag", "noindex, nofollow");
   return response;
 }
 
 export const config = {
   /**
-   * Pages, not assets.
+   * Pages, not assets — and never /enter or the handler that sets the cookie,
+   * which would be a loop.
    *
-   * This matcher started as "/:path*" — gate literally everything — on the
-   * reasoning that gating only HTML leaves images fetchable by direct URL.
-   * That broke every image on the site, and the failure is worth recording
-   * because it is not obvious: Next's image optimizer serves /_next/image by
-   * fetching the source back off its own origin over HTTP. That internal
-   * request carries no Authorization header, so it got the 401 HTML page
-   * instead of a PNG and answered the browser with "400 — The requested
-   * resource isn't a valid image." Authenticating in the browser did not
-   * help, because the failing request was never the browser's.
+   * The asset exclusion is load-bearing and non-obvious. An earlier version
+   * matched everything, which broke every image on the site: Next's image
+   * optimizer serves /_next/image by fetching the source back off its own
+   * origin over HTTP, and that internal request carries no cookie. It got the
+   * gate page instead of a PNG and answered "400 — The requested resource
+   * isn't a valid image". Authenticating in the browser never helped, because
+   * the failing request was never the browser's.
    *
-   * So /_next and ordinary static files are let through, and the gate covers
-   * the pages. Someone who knows an exact asset URL can still fetch it; that
-   * is the deliberate trade. Nothing links to those URLs, the pages that
-   * would reference them are gated, and the alternative is a site with no
-   * images for the people who do have the password.
+   * So someone who knows an exact asset URL can still fetch it. That is the
+   * deliberate trade against a site with no images for everyone holding the
+   * password.
    */
   matcher: [
-    "/((?!_next/|favicon\.ico|.*\.(?:png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|otf)$).*)",
+    "/((?!enter|api/enter|_next/|favicon\.ico|.*\.(?:png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|otf)$).*)",
   ],
 };

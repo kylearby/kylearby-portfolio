@@ -2,11 +2,6 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { site } from "@/lib/site";
 import { ThemeProvider, themeScript } from "@/components/theme/ThemeProvider";
-import { Navbar } from "@/components/chrome/Navbar";
-import { Footer } from "@/components/chrome/Footer";
-import { Cursor } from "@/components/chrome/Cursor";
-import { ScrollProgress } from "@/components/chrome/ScrollProgress";
-import { SmoothScroll } from "@/components/chrome/SmoothScroll";
 import { GridLines } from "@/components/chrome/GridLines";
 
 export const metadata: Metadata = {
@@ -96,14 +91,13 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
+        {/* Only what every page needs, gate included: the theme tokens and
+            the background grid. Navigation, cursor and smooth scrolling live
+            in the (site) group so /enter does not render the chrome of a site
+            the visitor has not been let into. */}
         <ThemeProvider>
           <GridLines />
-          <SmoothScroll />
-          <ScrollProgress />
-          <Cursor />
-          <Navbar />
-          <main id="main">{children}</main>
-          <Footer />
+          {children}
         </ThemeProvider>
       </body>
     </html>
